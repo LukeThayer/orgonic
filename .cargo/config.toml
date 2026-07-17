@@ -1,0 +1,7 @@
+# `cargo dev` == `cargo run --features dev` — the fast iterative build.
+# Keeping this as an alias means `cargo build --release` stays clean and shippable
+# (no dynamic linking). No custom linker is set: on macOS the default ld-prime/ld64
+# is faster than LLD for Bevy. (For Linux/Windows you would add a [target.*] linker
+# block here — see the Bevy config_fast_builds.toml referenced in the README.)
+[alias]
+dev = "run --features dev"

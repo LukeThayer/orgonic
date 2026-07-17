@@ -1,0 +1,22 @@
+[package]
+name = "orgonic"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = "0.19"
+
+[features]
+# `cargo dev` enables this (see .cargo/config.toml). It turns on dynamic linking for
+# fast iterative rebuilds. NEVER enable it for a release build you intend to ship —
+# a dynamic-linking binary needs libbevy_dylib shipped alongside it and blocks some
+# optimizations.
+dev = ["bevy/dynamic_linking", "bevy/bevy_dev_tools"]
+
+# Fast-compile profile: compile OUR code quickly (opt-level 1) but keep DEPENDENCIES
+# (Bevy) fully optimized (opt-level 3) so the app still runs smoothly in dev.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

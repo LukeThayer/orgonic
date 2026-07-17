@@ -1,0 +1,9 @@
+# Superpowers planning artifacts (design specs, implementation plans) — kept local, not committed
+# Matches a `superpowers/` directory anywhere in the tree
+superpowers/
+
+# Rust build output
+/target
+
+# Nix build symlink (from `nix build`)
+/result
