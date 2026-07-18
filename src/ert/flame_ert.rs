@@ -172,8 +172,6 @@ fn flame_override(temperature: f32) -> bevy_sprinkles::prelude::ParticleOverride
             0.02 + 0.5 * heat,
             1.0,
         )),
-        // author flame-core.ron amount at max density; modulate DOWN (stays <= 1.0).
-        emission_rate_mul: Some(0.3 + 0.7 * heat),
         speed_mul: Some(1.0 + 1.0 * heat),
         ..Default::default()
     }
