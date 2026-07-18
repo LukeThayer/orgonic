@@ -14,7 +14,7 @@ fn main() {
     app.add_plugins(DefaultPlugins)
         .add_plugins(FlyCameraPlugin)
         .add_plugins(PhysicsPlugins::default())
-        .add_plugins(PhysicsDebugPlugin::default())
+        // .add_plugins(PhysicsDebugPlugin::default())
         .add_plugins(SprinklesPlugin)
         .add_plugins(ErtPlugin)
         .add_systems(Startup, setup);

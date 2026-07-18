@@ -2,6 +2,8 @@ use bevy::input::mouse::AccumulatedMouseMotion;
 use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
+use crate::ert;
+
 /// Marker + state for the fly camera. Storing yaw/pitch ourselves keeps mouse-look
 /// stable (we rebuild the rotation from them each frame instead of accumulating
 /// floating-point drift on the Quat).
@@ -84,6 +86,8 @@ fn camera_move(
     time: Res<Time>,
     cursor: Single<&CursorOptions, With<PrimaryWindow>>,
     cam: Single<(&mut Transform, &FlyCam)>,
+    commands: Commands,
+    asset_server: Res<AssetServer>,
 ) {
     if cursor.grab_mode == CursorGrabMode::None {
         return;
@@ -113,7 +117,13 @@ fn camera_move(
     if keys.pressed(KeyCode::KeyQ) {
         direction -= up;
     }
-    if keys.pressed(KeyCode::KeyF) {}
+    if keys.just_released(KeyCode::KeyF) {
+        ert::flame_ert::spawn(
+            transform.translation + forward * 2.0,
+            commands,
+            asset_server,
+        );
+    }
 
     let boost = if keys.pressed(KeyCode::ShiftLeft) {
         3.0

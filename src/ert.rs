@@ -2,15 +2,18 @@ use avian3d::prelude::*;
 use bevy::prelude::*;
 use bevy_sprinkles::prelude::{ParticleEmitterOverrides, Particles3d, ParticlesAsset};
 
-mod flame_ert;
+pub mod flame_ert;
 mod glacial_ert;
 
 // ---------------------------------------------------------------------------
 // Global ert values  shared by every kind of ert.
 // ---------------------------------------------------------------------------
-pub const ERT_LENGTH: f32 = 1.0;
+pub const ERT_LENGTH: f32 = 0.25;
 /// Velocity damping
 pub const DAMPING: f32 = 1.0;
+/// Density used to derive each ert core's mass properties from its collider shape.
+/// Roughly water-like, so a flame core (radius `ERT_LENGTH * 0.25`) lands near unit mass.
+pub const ERT_DENSITY: f32 = 1000.0;
 
 /// Marker: every ert (of any kind) has this.
 #[derive(Component)]
@@ -58,13 +61,26 @@ pub fn spawn_ert(
     range_radius: f32,
     kind: impl Bundle,
 ) {
+    let core = Collider::sphere(core_radius);
+
     commands
         .spawn((
             Ert,
             kind,
             RigidBody::Dynamic,
-            Collider::sphere(core_radius),
+            // Avian derives a body's mass from its colliders, but its mass query filters
+            // `Without<Sensor>` — and the core below is a `Sensor`, so it contributes
+            // nothing. Without this the body is left with zero mass and inertia, which
+            // avian warns about and which can feed NaN into the solver. Derive the mass
+            // properties explicitly from the very shape the collider uses.
+            MassPropertiesBundle::from_shape(&core, ERT_DENSITY),
+            core,
             CollisionLayers::new(ErtLayer::Core, [ErtLayer::Core, ErtLayer::Range]),
+            // Cores report their own contacts so core-on-core hits can be detected
+            // (flame erts explode on one). Includes range sensors as well as other
+            // cores, so readers must filter to the entities they care about.
+            CollidingEntities::default(),
+            Sensor,
             GravityScale(0.0),
             LinearDamping(DAMPING),
             LinearVelocity::default(),
