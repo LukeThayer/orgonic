@@ -4,13 +4,13 @@ use bevy::prelude::*;
 use rand::RngExt;
 use std::collections::HashMap;
 
-use super::{spawn_ert, ErtStats, ERT_LENGTH};
+use super::{spawn_ert, ERT_LENGTH};
 
 // Equations:
 //
 // Convergance Radius - The radius in which Flame erts turn into a flame and start accumulating
 // temperature
-//  c_r = 3.34log(n), where n is the number of erts in range
+//  c_r = 1.34log(n), where n is the number of erts in range
 //
 // Temperature - The temperature of the flame created
 // t = summation(13/d^2), where d is the radius between flame erts within convergance radius
@@ -43,9 +43,9 @@ impl Default for Flame {
 }
 
 const COUNT: usize = 2;
-const ATTRACTION: f32 = ERT_LENGTH * 10.0;
 const CORE_RADIUS: f32 = ERT_LENGTH * 0.25;
-const RANGE_RADIUS: f32 = ERT_LENGTH * 2.0;
+const RANGE_RADIUS: f32 = ERT_LENGTH;
+const CONVERGANCE_RADIUS_COEFFCIENT: f32 = 1.34;
 const TEMPERATURE_COEFFCIENT: f32 = 13.0;
 
 const SPORADIC_VELOCITY_COEFFCIENT: f32 = 1.0 / 57.0;
@@ -64,7 +64,7 @@ impl Plugin for FlameErtPlugin {
 }
 
 fn spawn(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let effect = asset_server.load("flame-core.ron");
+    let effect = asset_server.load("fire.ron");
 
     for i in 0..COUNT {
         let fi = (i + 1) as f32;
@@ -75,9 +75,6 @@ fn spawn(mut commands: Commands, asset_server: Res<AssetServer>) {
             &mut commands,
             &effect,
             Vec3::new(x, y, z),
-            ErtStats {
-                attraction: ATTRACTION,
-            },
             CORE_RADIUS,
             RANGE_RADIUS,
             Flame::default(),
@@ -87,12 +84,12 @@ fn spawn(mut commands: Commands, asset_server: Res<AssetServer>) {
 
 fn process(
     positions: Query<(Entity, &Transform), With<Flame>>,
-    sensors: Query<(&ChildOf, &CollidingEntities), With<ErtRange>>,
+    mut sensors: Query<(&ChildOf, &CollidingEntities, &mut Collider), With<ErtRange>>,
     mut bodies: Query<(
         Entity,
         &mut LinearVelocity,
         &mut Flame,
-        &mut bevy_sprinkles::prelude::ParticleOverride,
+        &mut bevy_sprinkles::prelude::ParticleEmitterOverrides,
     )>,
     time: Res<Time>,
 ) {
@@ -101,7 +98,7 @@ fn process(
     let mut temperatures: HashMap<Entity, f32> = HashMap::new();
 
     // Temperature = sum of 13/d^2 over the cores this ert's sensor currently detects.
-    for (child_of, colliding) in &sensors {
+    for (child_of, colliding, mut collider) in &mut sensors {
         let me_entity = child_of.parent();
         let Some(&me) = pos.get(&me_entity) else {
             continue;
@@ -115,6 +112,14 @@ fn process(
                     TEMPERATURE_COEFFCIENT / (dist * dist);
             }
         }
+
+        // n is a natural number, and radius counting always counts self, so if colllding
+        // count is 0, the ert is always in range of itself so 0+1. therefore log10 can
+        // never be fed 0.
+        let n = colliding.iter().count() + 1;
+        let scale: Vec3 =
+            Vec3::new(1.0, 1.0, 1.0) * (CONVERGANCE_RADIUS_COEFFCIENT * (n as f32).log10() + 1.0);
+        collider.set_scale(scale, 1);
     }
 
     let now = time.elapsed_secs();
@@ -122,7 +127,13 @@ fn process(
     for (entity, mut velocity, mut flame, mut ovr) in &mut bodies {
         // Temperature is instantaneous: 0 when no neighbours are in range this frame.
         flame.temperature = temperatures.get(&entity).copied().unwrap_or(0.0);
-        *ovr = flame_override(flame.temperature);
+        // Fire and Smoke are distinct emitters on the same ert; each gets its own
+        // per-instance override so they can diverge visually while both tracking heat.
+        ovr.0.clear();
+        ovr.0
+            .insert("Fire".to_string(), fire_override(flame.temperature));
+        ovr.0
+            .insert("Smoke".to_string(), smoke_override(flame.temperature));
 
         // Re-roll the sporadic direction once per interval, in a fresh random direction.
         if now - flame.last_reroll >= SPORADIC_REROLL_SECS {
@@ -146,9 +157,11 @@ fn get_sv_slice(temperature: f32, rng: &mut impl RngExt) -> Vec3 {
     dir.normalize_or_zero() * temperature * SPORADIC_VELOCITY_COEFFCIENT
 }
 
-/// Maps an instantaneous flame temperature to its per-instance particle look.
-/// Saturates at `T_HOT` so hotter-than-max flames don't produce runaway values.
-fn flame_override(temperature: f32) -> bevy_sprinkles::prelude::ParticleOverride {
+/// Maps an instantaneous flame temperature to the "Fire" emitter's per-instance
+/// particle look: the hot core — grows, whitens, glows brighter, flares faster
+/// with heat. Saturates at `T_HOT` so hotter-than-max flames don't produce
+/// runaway values.
+fn fire_override(temperature: f32) -> bevy_sprinkles::prelude::ParticleOverride {
     use bevy::prelude::LinearRgba;
     use bevy_sprinkles::prelude::ParticleOverride;
 
@@ -173,6 +186,28 @@ fn flame_override(temperature: f32) -> bevy_sprinkles::prelude::ParticleOverride
             1.0,
         )),
         speed_mul: Some(1.0 + 1.0 * heat),
+        ..Default::default()
+    }
+}
+
+/// Maps an instantaneous flame temperature to the "Smoke" emitter's per-instance
+/// particle look: a distinct, subtler look than the fire core — thickens and
+/// darkens with heat, with little to no emissive glow. Saturates at `T_HOT`.
+fn smoke_override(temperature: f32) -> bevy_sprinkles::prelude::ParticleOverride {
+    use bevy::prelude::LinearRgba;
+    use bevy_sprinkles::prelude::ParticleOverride;
+
+    let heat = (temperature / T_HOT).clamp(0.0, 1.0);
+    ParticleOverride {
+        // darker/greyer as it gets hotter; grows with heat; barely glows
+        tint: Some(LinearRgba::new(
+            0.5 - 0.3 * heat,
+            0.5 - 0.3 * heat,
+            0.5 - 0.3 * heat,
+            1.0,
+        )),
+        size_mul: Some(0.8 + 0.6 * heat),
+        emissive: Some(LinearRgba::new(0.1 * heat, 0.05 * heat, 0.02 * heat, 1.0)),
         ..Default::default()
     }
 }
@@ -222,15 +257,15 @@ mod tests {
         assert!(get_sv_slice(10.0, &mut rng).is_finite());
     }
 
+    /// The Fire emitter grows and brightens with temperature.
     #[test]
-    fn hot_flame_is_bigger_brighter_than_cool() {
-        let cool = flame_override(0.0);
-        let hot = flame_override(T_HOT);
+    fn hot_fire_is_bigger_brighter_than_cool() {
+        let cool = fire_override(0.0);
+        let hot = fire_override(T_HOT);
         assert!(
             hot.size_mul.unwrap() > cool.size_mul.unwrap(),
             "hot must be bigger"
         );
-        // emissive luminance rises with temperature
         let lum = |o: &bevy_sprinkles::prelude::ParticleOverride| {
             let e = o.emissive.unwrap();
             e.red + e.green + e.blue
@@ -238,12 +273,27 @@ mod tests {
         assert!(lum(&hot) > lum(&cool), "hot must glow brighter");
     }
 
+    /// Above `T_HOT` the Fire mapping saturates (no runaway values).
     #[test]
-    fn override_is_clamped_at_and_above_t_hot() {
-        // Above T_HOT the mapping must saturate (no runaway values).
-        let hot = flame_override(T_HOT);
-        let hotter = flame_override(T_HOT * 4.0);
+    fn fire_override_is_clamped_at_and_above_t_hot() {
+        let hot = fire_override(T_HOT);
+        let hotter = fire_override(T_HOT * 4.0);
         assert_eq!(hot.size_mul, hotter.size_mul);
         assert_eq!(hot.emissive.map(|e| e.red), hotter.emissive.map(|e| e.red));
+    }
+
+    /// Fire and Smoke emitters get distinct looks, and both track temperature.
+    #[test]
+    fn fire_and_smoke_differ_and_track_heat() {
+        let fire_cool = fire_override(0.0);
+        let fire_hot = fire_override(T_HOT);
+        let smoke_cool = smoke_override(0.0);
+        let smoke_hot = smoke_override(T_HOT);
+        // fire grows + brightens with heat
+        assert!(fire_hot.size_mul.unwrap() > fire_cool.size_mul.unwrap());
+        // smoke is distinct from fire (different emissive intensity or size curve)
+        assert_ne!(fire_hot.emissive, smoke_hot.emissive);
+        // smoke also reacts to heat (its own way)
+        assert!(smoke_hot.size_mul.unwrap() >= smoke_cool.size_mul.unwrap());
     }
 }

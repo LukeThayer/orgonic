@@ -1,6 +1,8 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
-use bevy_sprinkles::prelude::{ParticleOverride, Particles3d, ParticlesAsset};
+use bevy_sprinkles::prelude::{
+    ParticleEmitterOverrides, ParticleOverride, Particles3d, ParticlesAsset,
+};
 use std::collections::HashMap;
 
 mod flame_ert;
@@ -58,7 +60,6 @@ pub fn spawn_ert(
     commands: &mut Commands,
     effect: &Handle<ParticlesAsset>,
     position: Vec3,
-    stats: ErtStats,
     core_radius: f32,
     range_radius: f32,
     kind: impl Bundle,
@@ -67,15 +68,15 @@ pub fn spawn_ert(
         .spawn((
             Ert,
             kind,
-            stats,
             RigidBody::Dynamic,
             Collider::sphere(core_radius),
-            CollisionLayers::new(ErtLayer::Core, [ErtLayer::Range]),
+            CollisionLayers::new(ErtLayer::Core, [ErtLayer::Core, ErtLayer::Range]),
             GravityScale(0.0),
             LinearDamping(DAMPING),
             LinearVelocity::default(),
             Particles3d(effect.clone()),
             ParticleOverride::default(),
+            ParticleEmitterOverrides::default(),
             Transform::from_translation(position),
         ))
         .with_child((
