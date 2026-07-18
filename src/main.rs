@@ -1,16 +1,22 @@
 mod camera;
+mod ert;
 
+use avian3d::prelude::*;
 #[cfg(feature = "dev")]
 use bevy::dev_tools::fps_overlay::FpsOverlayPlugin;
 use bevy::prelude::*;
+use bevy_sprinkles::prelude::SprinklesPlugin;
 use camera::FlyCameraPlugin;
+use ert::ErtPlugin;
 
 fn main() {
     let mut app = App::new();
-    // DefaultPlugins wires up windowing, rendering, input, audio, and more.
     app.add_plugins(DefaultPlugins)
-        // Our fly camera lives in its own plugin (see camera.rs).
         .add_plugins(FlyCameraPlugin)
+        .add_plugins(PhysicsPlugins::default())
+        .add_plugins(PhysicsDebugPlugin::default())
+        .add_plugins(SprinklesPlugin)
+        .add_plugins(ErtPlugin)
         .add_systems(Startup, setup);
     #[cfg(feature = "dev")]
     app.add_plugins(FpsOverlayPlugin::default());
@@ -28,7 +34,9 @@ fn setup(
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
         MeshMaterial3d(materials.add(Color::srgb(0.8, 0.7, 0.6))),
-        Transform::from_xyz(0.0, 0.0, 0.0),
+        Transform::from_xyz(0.0, -1.0, 0.0),
+        RigidBody::Static,
+        Collider::cuboid(1.0, 1.0, 1.0),
     ));
 
     // A directional light (like the sun) so the cube is actually shaded.

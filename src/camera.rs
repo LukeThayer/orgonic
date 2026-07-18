@@ -113,6 +113,7 @@ fn camera_move(
     if keys.pressed(KeyCode::KeyQ) {
         direction -= up;
     }
+    if keys.pressed(KeyCode::KeyF) {}
 
     let boost = if keys.pressed(KeyCode::ShiftLeft) {
         3.0

@@ -5,6 +5,9 @@ edition = "2021"
 
 [dependencies]
 bevy = "0.19"
+avian3d = "0.7"
+bevy_sprinkles = { path = "../sprinkles/crates/bevy_sprinkles" }
+rand = "0.10"
 
 [features]
 # `cargo dev` enables this (see .cargo/config.toml). It turns on dynamic linking for

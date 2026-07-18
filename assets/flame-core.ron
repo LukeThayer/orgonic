@@ -1,0 +1,136 @@
+(
+    sprinkles_version: "0.3",
+    name: "flame-core",
+    dimension: D3,
+    emitters: [
+        (
+            name: "Emitter",
+            time: (
+                lifetime: 1.0,
+            ),
+            draw_pass: (
+                mesh: Sphere(
+                    radius: 0.2,
+                    segments: 16,
+                    rings: 16,
+                ),
+                material: Standard((
+                    base_color: (0.5891927, 0.39617515, 0.052805185, 1.0),
+                    emissive: (0.651062, 0.039475024, 0.039475024, 1.0),
+                    alpha_mode: Add,
+                    perceptual_roughness: 0.5,
+                    reflectance: 0.5,
+                )),
+                visibility_aabb: (
+                    center: (0.0, 0.01, -0.02),
+                    half_extents: (0.15, 0.17, 0.17),
+                ),
+            ),
+            emission: (
+                shape: Sphere(
+                    radius: 0.2,
+                ),
+                particles_amount: 8,
+            ),
+            scale: (
+                range: (
+                    min: 1.0,
+                    max: 1.0,
+                ),
+                scale_over_lifetime: Some((
+                    x: (
+                        points: [
+                            (
+                                position: 0.01,
+                                value: 0.21,
+                                mode: DoubleCurve,
+                                tension: 0.0,
+                                easing: Power,
+                            ),
+                            (
+                                position: 0.52,
+                                value: 0.92,
+                                mode: DoubleCurve,
+                                tension: 0.72,
+                                easing: Power,
+                            ),
+                            (
+                                position: 1.0,
+                                value: 0.0,
+                                mode: DoubleCurve,
+                                tension: 0.63,
+                                easing: Power,
+                            ),
+                        ],
+                        range: (
+                            min: 0.0,
+                            max: 1.0,
+                        ),
+                    ),
+                )),
+            ),
+            colors: (
+                initial_color: Solid(
+                    color: (1.0, 1.0, 1.0, 1.0),
+                ),
+                color_over_lifetime: (
+                    stops: [
+                        (
+                            color: (1.0, 1.0, 1.0, 1.0),
+                            position: 0.0,
+                        ),
+                        (
+                            color: (1.0, 1.0, 1.0, 1.0),
+                            position: 1.0,
+                        ),
+                    ],
+                ),
+            ),
+            velocities: (
+                initial_direction: (1.0, 0.0, 0.0),
+                spread: 45.0,
+                radial_velocity: (),
+                angular_velocity: (),
+                orbit_velocity: (
+                    velocity: (
+                        min: 0.0,
+                        max: 1.0,
+                    ),
+                    velocity_over_lifetime: Some((
+                        x: (
+                            points: [
+                                (
+                                    position: 0.01,
+                                    value: 0.55,
+                                    mode: DoubleCurve,
+                                    tension: 0.0,
+                                    easing: Power,
+                                ),
+                                (
+                                    position: 1.0,
+                                    value: 1.0,
+                                    mode: DoubleCurve,
+                                    tension: -0.41000000000000003,
+                                    easing: Power,
+                                ),
+                            ],
+                            range: (
+                                min: 0.0,
+                                max: 1.0,
+                            ),
+                        ),
+                    )),
+                ),
+                directional_velocity: (),
+            ),
+            accelerations: (
+                gravity: (0.0, 0.0, 0.0),
+            ),
+            collision: (
+                base_size: 0.01,
+            ),
+            particle_flags: "",
+        ),
+    ],
+    colliders: [],
+)

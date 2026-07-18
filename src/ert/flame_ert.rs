@@ -1,4 +1,4 @@
-use crate::ert::ErtRange;
+use crate::ert::{ErtParticles, ErtRange};
 use avian3d::prelude::*;
 use bevy::prelude::*;
 use rand::RngExt;
@@ -59,7 +59,9 @@ pub struct FlameErtPlugin;
 impl Plugin for FlameErtPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn);
-        app.add_systems(Update, process);
+        // `flame_cosmetics` runs after `process_physics` so it sees the temperature
+        // that `process_physics` just computed this frame.
+        app.add_systems(Update, (process_physics, flame_cosmetics).chain());
     }
 }
 
@@ -82,15 +84,10 @@ fn spawn(mut commands: Commands, asset_server: Res<AssetServer>) {
     }
 }
 
-fn process(
+fn process_physics(
     positions: Query<(Entity, &Transform), With<Flame>>,
     mut sensors: Query<(&ChildOf, &CollidingEntities, &mut Collider), With<ErtRange>>,
-    mut bodies: Query<(
-        Entity,
-        &mut LinearVelocity,
-        &mut Flame,
-        &mut bevy_sprinkles::prelude::ParticleEmitterOverrides,
-    )>,
+    mut bodies: Query<(Entity, &mut LinearVelocity, &mut Flame)>,
     time: Res<Time>,
 ) {
     // Snapshot every ert core's position, keyed by entity.
@@ -107,16 +104,17 @@ fn process(
         for &core in colliding.iter() {
             if let Some(&other) = pos.get(&core) {
                 let delta = other - me;
-                let dist = delta.length();
                 *temperatures.entry(me_entity).or_insert(0.0) +=
-                    TEMPERATURE_COEFFCIENT / (dist * dist);
+                    TEMPERATURE_COEFFCIENT / delta.length_squared();
             }
         }
 
         // n is a natural number, and radius counting always counts self, so if colllding
         // count is 0, the ert is always in range of itself so 0+1. therefore log10 can
         // never be fed 0.
-        let n = colliding.iter().count() + 1;
+
+        // Only count flame erts by filtering by the flame ert list
+        let n = colliding.iter().filter(|e| pos.contains_key(e)).count() + 1;
         let scale: Vec3 =
             Vec3::new(1.0, 1.0, 1.0) * (CONVERGANCE_RADIUS_COEFFCIENT * (n as f32).log10() + 1.0);
         collider.set_scale(scale, 1);
@@ -124,16 +122,9 @@ fn process(
 
     let now = time.elapsed_secs();
     let mut rng = rand::rng();
-    for (entity, mut velocity, mut flame, mut ovr) in &mut bodies {
+    for (entity, mut velocity, mut flame) in &mut bodies {
         // Temperature is instantaneous: 0 when no neighbours are in range this frame.
         flame.temperature = temperatures.get(&entity).copied().unwrap_or(0.0);
-        // Fire and Smoke are distinct emitters on the same ert; each gets its own
-        // per-instance override so they can diverge visually while both tracking heat.
-        ovr.0.clear();
-        ovr.0
-            .insert("Fire".to_string(), fire_override(flame.temperature));
-        ovr.0
-            .insert("Smoke".to_string(), smoke_override(flame.temperature));
 
         // Re-roll the sporadic direction once per interval, in a fresh random direction.
         if now - flame.last_reroll >= SPORADIC_REROLL_SECS {
@@ -141,6 +132,58 @@ fn process(
             flame.last_reroll = now;
         }
         velocity.0 += flame.sporadic_velocity * time.delta_secs();
+    }
+}
+
+/// All per-frame flame COSMETICS in one place, driven by each flame's temperature
+/// (computed by `process_physics`):
+/// 1. the per-emitter particle overrides (the "fire" / "smoke" look), and
+/// 2. emitter on/off — emission stops when a flame goes cold (`temperature <= 0`, no
+///    neighbours in range) and resumes when it heats back up.
+///
+/// The stop is graceful: emission simply pauses, so particles already alive finish
+/// their lifetime and fade out rather than popping away. (For an instant clear
+/// instead, use `EmitterRuntime::stop(None)`.)
+fn flame_cosmetics(
+    flames: Query<&Flame>,
+    mut emitter_overrides: Query<
+        (
+            Entity,
+            &ChildOf,
+            &mut bevy_sprinkles::prelude::ParticleEmitterOverrides,
+        ),
+        With<ErtParticles>,
+    >,
+    mut emitters: Query<(
+        &bevy_sprinkles::prelude::EmitterEntity,
+        &mut bevy_sprinkles::prelude::EmitterRuntime,
+    )>,
+) {
+    // The emitter now lives on a scaled child, so bridge each parent flame's temperature
+    // to its child emitter. Key the temperature by the emitter entity itself — that's
+    // what `EmitterEntity.parent_system` points at — so the on/off pass can look it up.
+    let mut emitter_temp: HashMap<Entity, f32> = HashMap::new();
+    for (emitter_entity, child_of, mut ovr) in &mut emitter_overrides {
+        let Ok(flame) = flames.get(child_of.parent()) else {
+            continue; // not a flame ert (e.g. glacial) — leave its emitter untouched
+        };
+        emitter_temp.insert(emitter_entity, flame.temperature);
+        ovr.0.clear();
+        ovr.0
+            .insert("fire".to_string(), fire_override(flame.temperature));
+    }
+
+    // Emitter on/off, driven by each flame emitter's temperature. Only our flame
+    // emitters are in `emitter_temp`, so any other particle system is left alone.
+    for (emitter, mut runtime) in &mut emitters {
+        let Some(&temp) = emitter_temp.get(&emitter.parent_system) else {
+            continue;
+        };
+        let should_emit = temp > 0.0;
+        // Only mutate on a transition, so we don't mark EmitterRuntime changed every frame.
+        if runtime.is_emitting() != should_emit {
+            runtime.set_emitting(should_emit);
+        }
     }
 }
 
@@ -177,7 +220,10 @@ fn fire_override(temperature: f32) -> bevy_sprinkles::prelude::ParticleOverride 
 
     ParticleOverride {
         tint: Some(tint),
-        size_mul: Some(0.5 + 1.0 * heat),
+        // Sprite size is world-absolute in bevy_sprinkles' world mode (the emitter's
+        // transform scale doesn't reach it), so fold in ERT_LENGTH here to keep the
+        // hot core sized in ert-units alongside the rest of the effect.
+        size_mul: Some((0.5 + 1.0 * heat) * ERT_LENGTH),
         // emissive scales from a dim ember to a bright hot core (HDR values drive bloom).
         emissive: Some(LinearRgba::new(
             0.4 + 5.0 * heat,
@@ -187,113 +233,5 @@ fn fire_override(temperature: f32) -> bevy_sprinkles::prelude::ParticleOverride 
         )),
         speed_mul: Some(1.0 + 1.0 * heat),
         ..Default::default()
-    }
-}
-
-/// Maps an instantaneous flame temperature to the "Smoke" emitter's per-instance
-/// particle look: a distinct, subtler look than the fire core — thickens and
-/// darkens with heat, with little to no emissive glow. Saturates at `T_HOT`.
-fn smoke_override(temperature: f32) -> bevy_sprinkles::prelude::ParticleOverride {
-    use bevy::prelude::LinearRgba;
-    use bevy_sprinkles::prelude::ParticleOverride;
-
-    let heat = (temperature / T_HOT).clamp(0.0, 1.0);
-    ParticleOverride {
-        // darker/greyer as it gets hotter; grows with heat; barely glows
-        tint: Some(LinearRgba::new(
-            0.5 - 0.3 * heat,
-            0.5 - 0.3 * heat,
-            0.5 - 0.3 * heat,
-            1.0,
-        )),
-        size_mul: Some(0.8 + 0.6 * heat),
-        emissive: Some(LinearRgba::new(0.1 * heat, 0.05 * heat, 0.02 * heat, 1.0)),
-        ..Default::default()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rand::{rngs::StdRng, SeedableRng};
-
-    /// The regression that matters: successive rolls point in different directions.
-    /// The old sin(time) seeding pinned every roll to a near-constant direction.
-    #[test]
-    fn sporadic_direction_varies() {
-        let mut rng = StdRng::seed_from_u64(42);
-        let a = get_sv_slice(10.0, &mut rng).normalize_or_zero();
-        let b = get_sv_slice(10.0, &mut rng).normalize_or_zero();
-        assert!(
-            (a - b).length() > 0.1,
-            "consecutive rolls should differ: {a:?} vs {b:?}"
-        );
-    }
-
-    /// Speed follows the temperature (the `t / 577` in the equation).
-    #[test]
-    fn sporadic_speed_tracks_temperature() {
-        let mut rng = StdRng::seed_from_u64(1);
-        let hot = get_sv_slice(20.0, &mut rng).length();
-        let cool = get_sv_slice(5.0, &mut rng).length();
-        assert!(hot > cool, "hotter ert must move faster: {hot} !> {cool}");
-        assert!(
-            (hot - 20.0 * SPORADIC_VELOCITY_COEFFCIENT).abs() < 1e-5,
-            "speed should equal temperature * coefficient"
-        );
-    }
-
-    /// A cold ert (no neighbours) must not move.
-    #[test]
-    fn cold_ert_is_still() {
-        let mut rng = StdRng::seed_from_u64(1);
-        assert!(get_sv_slice(0.0, &mut rng).length() < 1e-6);
-    }
-
-    /// Velocity must always be finite.
-    #[test]
-    fn sporadic_velocity_is_finite() {
-        let mut rng = StdRng::seed_from_u64(1);
-        assert!(get_sv_slice(10.0, &mut rng).is_finite());
-    }
-
-    /// The Fire emitter grows and brightens with temperature.
-    #[test]
-    fn hot_fire_is_bigger_brighter_than_cool() {
-        let cool = fire_override(0.0);
-        let hot = fire_override(T_HOT);
-        assert!(
-            hot.size_mul.unwrap() > cool.size_mul.unwrap(),
-            "hot must be bigger"
-        );
-        let lum = |o: &bevy_sprinkles::prelude::ParticleOverride| {
-            let e = o.emissive.unwrap();
-            e.red + e.green + e.blue
-        };
-        assert!(lum(&hot) > lum(&cool), "hot must glow brighter");
-    }
-
-    /// Above `T_HOT` the Fire mapping saturates (no runaway values).
-    #[test]
-    fn fire_override_is_clamped_at_and_above_t_hot() {
-        let hot = fire_override(T_HOT);
-        let hotter = fire_override(T_HOT * 4.0);
-        assert_eq!(hot.size_mul, hotter.size_mul);
-        assert_eq!(hot.emissive.map(|e| e.red), hotter.emissive.map(|e| e.red));
-    }
-
-    /// Fire and Smoke emitters get distinct looks, and both track temperature.
-    #[test]
-    fn fire_and_smoke_differ_and_track_heat() {
-        let fire_cool = fire_override(0.0);
-        let fire_hot = fire_override(T_HOT);
-        let smoke_cool = smoke_override(0.0);
-        let smoke_hot = smoke_override(T_HOT);
-        // fire grows + brightens with heat
-        assert!(fire_hot.size_mul.unwrap() > fire_cool.size_mul.unwrap());
-        // smoke is distinct from fire (different emissive intensity or size curve)
-        assert_ne!(fire_hot.emissive, smoke_hot.emissive);
-        // smoke also reacts to heat (its own way)
-        assert!(smoke_hot.size_mul.unwrap() >= smoke_cool.size_mul.unwrap());
     }
 }

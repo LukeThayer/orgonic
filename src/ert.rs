@@ -1,37 +1,31 @@
 use avian3d::prelude::*;
 use bevy::prelude::*;
-use bevy_sprinkles::prelude::{
-    ParticleEmitterOverrides, ParticleOverride, Particles3d, ParticlesAsset,
-};
-use std::collections::HashMap;
+use bevy_sprinkles::prelude::{ParticleEmitterOverrides, Particles3d, ParticlesAsset};
 
 mod flame_ert;
 mod glacial_ert;
 
 // ---------------------------------------------------------------------------
-// Global ert values — shared by every kind of ert.
+// Global ert values  shared by every kind of ert.
 // ---------------------------------------------------------------------------
-/// Radius of an ert's solid core (also the size of its visible sphere).
 pub const ERT_LENGTH: f32 = 1.0;
-/// Velocity damping, so erts settle instead of oscillating forever.
+/// Velocity damping
 pub const DAMPING: f32 = 1.0;
-/// Attraction cuts off closer than this, avoiding a divide-by-zero blow-up.
-pub const DEAD_ZONE: f32 = 0.5 * ERT_LENGTH;
 
 /// Marker: every ert (of any kind) has this.
 #[derive(Component)]
 pub struct Ert;
 
-/// Per-ert tunables. Each kind spawns with its own values.
-#[derive(Component, Clone, Copy)]
-pub struct ErtStats {
-    /// Pull strength toward in-range neighbours. Negative = repel.
-    pub attraction: f32,
-}
-
 /// Marker on the child sensor entity, so `attract` can find range sensors.
 #[derive(Component)]
 struct ErtRange;
+
+/// Marker on the child particle-emitter entity. The emitter lives on its own
+/// collider-free child so its `Transform` scale (`ERT_LENGTH`) reaches bevy_sprinkles
+/// — which scales the whole effect from the emitter's world transform — without avian
+/// ever applying that scale to a collider.
+#[derive(Component)]
+struct ErtParticles;
 
 /// Physics layers so a range sensor detects cores but NOT other range sensors.
 #[derive(PhysicsLayer, Default, Clone, Copy, Debug)]
@@ -74,59 +68,31 @@ pub fn spawn_ert(
             GravityScale(0.0),
             LinearDamping(DAMPING),
             LinearVelocity::default(),
-            Particles3d(effect.clone()),
-            ParticleOverride::default(),
-            ParticleEmitterOverrides::default(),
             Transform::from_translation(position),
+            // The body has no mesh of its own, but the particle-emitter child does, so
+            // the body must be a node in the visibility hierarchy for visibility to
+            // propagate to it (otherwise Bevy warns B0004). `Particles3d` used to supply
+            // this implicitly when it lived here; now it lives on the child.
+            Visibility::default(),
         ))
-        .with_child((
-            ErtRange,
-            Collider::sphere(range_radius),
-            Sensor,
-            CollisionLayers::new(ErtLayer::Range, [ErtLayer::Core]),
-            CollidingEntities::default(),
-            Transform::default(),
-        ));
-}
-
-/// Shared behaviour: pull every ert toward the cores inside its range sensor,
-/// scaled by that ert's own `attraction`.
-fn attract(
-    positions: Query<(Entity, &Transform), With<Ert>>,
-    stats: Query<&ErtStats>,
-    sensors: Query<(&ChildOf, &CollidingEntities), With<ErtRange>>,
-    mut bodies: Query<(Entity, &mut LinearVelocity), With<Ert>>,
-    time: Res<Time>,
-) {
-    // Snapshot every ert core's position, keyed by entity.
-    let pos: HashMap<Entity, Vec3> = positions.iter().map(|(e, t)| (e, t.translation)).collect();
-
-    // Sum, per ert, the pull from the cores its sensor currently detects.
-    let mut pulls: HashMap<Entity, Vec3> = HashMap::new();
-    for (child_of, colliding) in &sensors {
-        let me_entity = child_of.parent();
-        let Some(&me) = pos.get(&me_entity) else {
-            continue;
-        };
-
-        let mut pull = Vec3::ZERO;
-        for &core in colliding.iter() {
-            if let Some(&other) = pos.get(&core) {
-                let delta = other - me;
-                let dist = delta.length();
-                if dist > DEAD_ZONE {
-                    pull += delta / dist;
-                }
-            }
-        }
-        *pulls.entry(me_entity).or_insert(Vec3::ZERO) += pull;
-    }
-
-    // Apply each ert's pull, scaled by its own attraction stat.
-    for (entity, mut velocity) in &mut bodies {
-        if let Some(&pull) = pulls.get(&entity) {
-            let attraction = stats.get(entity).map(|s| s.attraction).unwrap_or(0.0);
-            velocity.0 += pull * attraction * time.delta_secs();
-        }
-    }
+        .with_children(|parent| {
+            parent.spawn((
+                ErtRange,
+                Collider::sphere(range_radius),
+                Sensor,
+                CollisionLayers::new(ErtLayer::Range, [ErtLayer::Core]),
+                CollidingEntities::default(),
+                Transform::default(),
+            ));
+            // The particle emitter lives on its own collider-free child, scaled by
+            // ERT_LENGTH. bevy_sprinkles reads the emitter's world transform and scales
+            // the whole effect (emission volume, velocities, gravity) by that factor,
+            // while avian only ever sees the un-scaled physics body and its sensor.
+            parent.spawn((
+                ErtParticles,
+                Particles3d(effect.clone()),
+                ParticleEmitterOverrides::default(),
+                Transform::from_scale(Vec3::splat(ERT_LENGTH)),
+            ));
+        });
 }

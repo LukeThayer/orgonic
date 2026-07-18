@@ -1,0 +1,326 @@
+(
+    sprinkles_version: "0.3",
+    name: "Explosion",
+    dimension: D3,
+    emitters: [
+        (
+            name: "Smoke",
+            time: (
+                lifetime: 2.0,
+                delay: 0.3,
+                fixed_fps: 60,
+            ),
+            draw_pass: (
+                draw_order: Lifetime,
+                mesh: Sphere(
+                    radius: 1.0,
+                    segments: 16,
+                    rings: 8,
+                ),
+                material: Standard((
+                    base_color: (1.0, 1.0, 1.0, 1.0),
+                    emissive: (0.0, 0.0, 0.0, 0.0),
+                    alpha_mode: Blend,
+                    perceptual_roughness: 1.0,
+                    reflectance: 0.5,
+                )),
+                shadow_caster: false,
+            ),
+            emission: (
+                shape: Sphere(
+                    radius: 0.3,
+                ),
+                particles_amount: 16,
+            ),
+            scale: (
+                range: (
+                    min: 0.2,
+                    max: 0.3,
+                ),
+                scale_over_lifetime: Some((
+                    x: (
+                        points: [
+                            (
+                                position: 0.0,
+                                value: 0.0,
+                                mode: DoubleCurve,
+                                tension: 0.0,
+                                easing: Power,
+                            ),
+                            (
+                                position: 0.13,
+                                value: 1.0,
+                                mode: SingleCurve,
+                                tension: -1.0,
+                                easing: Circ,
+                            ),
+                            (
+                                position: 1.0,
+                                value: 0.0,
+                                mode: SingleCurve,
+                                tension: -1.0,
+                                easing: Circ,
+                            ),
+                        ],
+                        range: (
+                            min: 0.0,
+                            max: 1.0,
+                        ),
+                    ),
+                )),
+            ),
+            colors: (
+                initial_color: Gradient(
+                    gradient: (
+                        stops: [
+                            (
+                                color: (0.047058824, 0.039215688, 0.03529412, 1.0),
+                                position: 0.0,
+                            ),
+                            (
+                                color: (0.10980392, 0.09803922, 0.09019608, 1.0),
+                                position: 1.0,
+                            ),
+                        ],
+                    ),
+                ),
+                color_over_lifetime: (
+                    stops: [
+                        (
+                            color: (1.0, 1.0, 1.0, 1.0),
+                            position: 0.0,
+                        ),
+                        (
+                            color: (1.0, 1.0, 1.0, 1.0),
+                            position: 1.0,
+                        ),
+                    ],
+                ),
+                alpha_over_lifetime: Some((
+                    x: (
+                        points: [
+                            (
+                                position: 0.0,
+                                value: 1.0,
+                                mode: SingleCurve,
+                                tension: 0.0,
+                                easing: Power,
+                            ),
+                            (
+                                position: 1.0,
+                                value: 0.0,
+                                mode: SingleCurve,
+                                tension: -0.5,
+                                easing: Power,
+                            ),
+                        ],
+                        range: (
+                            min: 0.0,
+                            max: 1.0,
+                        ),
+                    ),
+                )),
+            ),
+            velocities: (
+                initial_direction: (0.0, 0.0, 0.0),
+                spread: 45.0,
+                initial_velocity: (
+                    min: 0.0,
+                    max: 0.5,
+                ),
+                radial_velocity: (),
+                angular_velocity: (),
+                orbit_velocity: (),
+                directional_velocity: (),
+            ),
+            accelerations: (
+                gravity: (0.0, 2.0, 0.0),
+            ),
+            turbulence: (
+                enabled: true,
+                noise_strength: 0.1,
+                noise_scale: 0.2,
+                noise_speed_random: 0.2,
+                influence: (
+                    min: 0.01,
+                    max: 0.04,
+                ),
+                influence_over_lifetime: Some((
+                    x: (
+                        points: [
+                            (
+                                position: 0.0,
+                                value: 0.0,
+                                mode: DoubleCurve,
+                                tension: 0.0,
+                                easing: Power,
+                            ),
+                            (
+                                position: 0.5,
+                                value: 0.75,
+                                mode: SingleCurve,
+                                tension: -1.0,
+                                easing: Circ,
+                            ),
+                            (
+                                position: 1.0,
+                                value: 1.0,
+                                mode: SingleCurve,
+                                tension: 1.0,
+                                easing: Circ,
+                            ),
+                        ],
+                        range: (
+                            min: 0.0,
+                            max: 1.0,
+                        ),
+                    ),
+                )),
+            ),
+            collision: (
+                base_size: 0.01,
+            ),
+            particle_flags: "",
+        ),
+        (
+            name: "Fire",
+            time: (
+                lifetime: 0.6,
+                fixed_fps: 60,
+            ),
+            draw_pass: (
+                draw_order: ViewDepth,
+                mesh: Sphere(
+                    radius: 1.0,
+                    segments: 32,
+                    rings: 16,
+                ),
+                material: Standard((
+                    base_color: (1.0, 1.0, 1.0, 1.0),
+                    emissive: (0.0, 0.0, 0.0, 0.0),
+                    alpha_mode: Opaque,
+                    perceptual_roughness: 1.0,
+                    reflectance: 0.5,
+                )),
+                shadow_caster: false,
+            ),
+            emission: (
+                shape: Sphere(
+                    radius: 0.2,
+                ),
+                particles_amount: 16,
+            ),
+            scale: (
+                range: (
+                    min: 0.2,
+                    max: 0.4,
+                ),
+                scale_over_lifetime: Some((
+                    x: (
+                        points: [
+                            (
+                                position: 0.01,
+                                value: 0.78,
+                                mode: DoubleCurve,
+                                tension: 0.0,
+                                easing: Power,
+                            ),
+                            (
+                                position: 0.59,
+                                value: 0.54,
+                                mode: DoubleCurve,
+                                tension: 0.0,
+                                easing: Power,
+                            ),
+                            (
+                                position: 1.0,
+                                value: 0.25,
+                                mode: DoubleCurve,
+                                tension: 0.0,
+                                easing: Power,
+                            ),
+                        ],
+                        range: (
+                            min: 0.0,
+                            max: 1.0,
+                        ),
+                    ),
+                )),
+            ),
+            colors: (
+                initial_color: Solid(
+                    color: (0.7317505, 0.33509246, 0.0, 1.0),
+                ),
+                color_over_lifetime: (
+                    stops: [
+                        (
+                            color: (0.90340173, 0.66032547, 0.19864714, 1.0),
+                            position: 0.0,
+                        ),
+                        (
+                            color: (1.0, 0.52463937, 0.0, 1.0),
+                            position: 1.0,
+                        ),
+                        (
+                            color: (0.22202554, 0.07042182, 0.0, 1.0),
+                            position: 1.0,
+                        ),
+                    ],
+                ),
+                emission_over_lifetime: Some((
+                    x: (
+                        points: [
+                            (
+                                position: 0.0,
+                                value: 10.0,
+                                mode: DoubleCurve,
+                                tension: 0.0,
+                                easing: Power,
+                            ),
+                            (
+                                position: 1.0,
+                                value: 0.0,
+                                mode: SingleCurve,
+                                tension: -1.0,
+                                easing: Circ,
+                            ),
+                        ],
+                        range: (
+                            min: 0.0,
+                            max: 10.0,
+                        ),
+                    ),
+                )),
+            ),
+            velocities: (
+                initial_direction: (0.0, 0.0, 0.0),
+                spread: 0.0,
+                radial_velocity: (),
+                angular_velocity: (),
+                orbit_velocity: (),
+                directional_velocity: (),
+            ),
+            accelerations: (
+                gravity: (0.0, 3.0, 0.0),
+            ),
+            turbulence: (
+                noise_strength: 0.1,
+                noise_scale: 2.5,
+                noise_speed_random: 0.2,
+                influence: (
+                    min: 0.01,
+                    max: 0.04,
+                ),
+            ),
+            collision: (
+                base_size: 0.01,
+            ),
+            particle_flags: "",
+        ),
+    ],
+    colliders: [],
+    authors: (
+        inspired_by: "Brackeys",
+        submitted_by: "DoceAzedo",
+    ),
+)
